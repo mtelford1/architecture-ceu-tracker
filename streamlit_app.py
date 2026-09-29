@@ -96,6 +96,7 @@ if search_response.status_code == 200:
 
             ce_children = ce_children_response.json().get("value", [])
 
+            # Find the AIA folder
             aia_folder = next(
                 (
                     item for item in ce_children
@@ -124,10 +125,30 @@ if search_response.status_code == 200:
 
                     aia_children = aia_children_response.json().get("value", [])
 
-                    st.success("AIA folder found.")
+                    # Only include folders with 4-digit year names
+                    year_folders = []
 
                     for item in aia_children:
-                        st.write(item["name"])
+
+                        name = item.get("name", "")
+
+                        if (
+                            "folder" in item
+                            and len(name) == 4
+                            and name.isdigit()
+                        ):
+                            year_folders.append(name)
+
+                    # Newest year first
+                    year_folders = sorted(
+                        year_folders,
+                        reverse=True
+                    )
+
+                    st.success("AIA folder found.")
+
+                    for year in year_folders:
+                        st.write(year)
 
                 else:
                     st.error("Could not read the AIA folder.")
