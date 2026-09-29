@@ -45,8 +45,10 @@ else:
     st.error("Microsoft access token not available.")
 
 # ---------------------------------------------------------
-# ONEDRIVE FOLDER TEST
+# ONEDRIVE DATA LOAD
 # ---------------------------------------------------------
+
+year_folders = []
 
 headers = {
     "Authorization": f"Bearer {st.user.tokens['access']}"
@@ -123,11 +125,12 @@ if search_response.status_code == 200:
 
                 if aia_children_response.status_code == 200:
 
-                    aia_children = aia_children_response.json().get("value", [])
+                    aia_children = aia_children_response.json().get(
+                        "value",
+                        []
+                    )
 
-                    # Only include folders with 4-digit year names
-                    year_folders = []
-
+                    # Keep only 4-digit year folders
                     for item in aia_children:
 
                         name = item.get("name", "")
@@ -137,39 +140,34 @@ if search_response.status_code == 200:
                             and len(name) == 4
                             and name.isdigit()
                         ):
-                            year_folders.append(name)
+                            year_folders.append(
+                                {
+                                    "year": int(name),
+                                    "name": name,
+                                    "id": item["id"]
+                                }
+                            )
 
-                    # Newest year first
                     year_folders = sorted(
                         year_folders,
+                        key=lambda x: x["year"],
                         reverse=True
                     )
 
-                    st.success("AIA folder found.")
-
-                    for year in year_folders:
-                        st.write(year)
-
                 else:
                     st.error("Could not read the AIA folder.")
-                    st.write(aia_children_response.status_code)
-                    st.write(aia_children_response.text)
 
             else:
                 st.error("AIA folder not found.")
 
         else:
             st.error("Could not read the Continuing Education folder.")
-            st.write(ce_children_response.status_code)
-            st.write(ce_children_response.text)
 
     else:
         st.error("Could not find the Continuing Education folder.")
 
 else:
     st.error("Could not search OneDrive.")
-    st.write(search_response.status_code)
-    st.write(search_response.text)
 
 # ---------------------------------------------------------
 # BASIC STYLING
@@ -409,9 +407,68 @@ st.divider()
 st.subheader("Certificates by Year")
 
 st.caption(
-    "Continuing education certificates organized by completion year."
+    "Continuing education certificates from OneDrive."
 )
 
+for year_folder in year_folders:
+
+    year = year_folder["year"]
+    folder_id = year_folder["id"]
+
+    files_url = (
+        "https://graph.microsoft.com/v1.0/"
+        f"me/drive/items/{folder_id}/children"
+    )
+
+    files_response = requests.get(
+        files_url,
+        headers=headers,
+        timeout=30
+    )
+
+    if files_response.status_code == 200:
+
+        items = files_response.json().get("value", [])
+
+        # Only show actual files, not subfolders
+        certificate_files = [
+            item
+            for item in items
+            if "file" in item
+        ]
+
+        certificate_files = sorted(
+            certificate_files,
+            key=lambda x: x.get("name", "").lower()
+        )
+
+        with st.expander(
+            f"{year} — {len(certificate_files)} certificates"
+        ):
+
+            if certificate_files:
+
+                for file in certificate_files:
+
+                    file_name = file.get(
+                        "name",
+                        "Unnamed file"
+                    )
+
+                    st.write(file_name)
+
+            else:
+                st.caption(
+                    "No certificate files found."
+                )
+
+    else:
+
+        with st.expander(str(year)):
+
+            st.error(
+                "Could not read this year's folder."
+            )
 
 # ---------------------------------------------------------
 # TEMPORARY SAMPLE DATA
