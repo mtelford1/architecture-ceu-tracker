@@ -48,33 +48,71 @@ else:
 # ONEDRIVE FOLDER TEST
 # ---------------------------------------------------------
 
-url = (
-    "https://graph.microsoft.com/v1.0/"
-    "me/drive/root/search(q='08_Continuing Education')"
-)
-
 headers = {
     "Authorization": f"Bearer {st.user.tokens['access']}"
 }
 
-response = requests.get(
-    url,
+# Search OneDrive for the CE folder
+search_url = (
+    "https://graph.microsoft.com/v1.0/"
+    "me/drive/root/search(q='08_Continuing Education')"
+)
+
+search_response = requests.get(
+    search_url,
     headers=headers,
     timeout=30
 )
 
-if response.status_code == 200:
-    items = response.json().get("value", [])
+if search_response.status_code == 200:
 
-    st.success("OneDrive CE folder found.")
+    search_items = search_response.json().get("value", [])
 
-    for item in items:
-        st.write(item["name"])
+    ce_folder = next(
+        (
+            item for item in search_items
+            if item.get("name") == "08_Continuing Education"
+            and "folder" in item
+        ),
+        None
+    )
+
+    if ce_folder:
+
+        folder_id = ce_folder["id"]
+
+        children_url = (
+            "https://graph.microsoft.com/v1.0/"
+            f"me/drive/items/{folder_id}/children"
+        )
+
+        children_response = requests.get(
+            children_url,
+            headers=headers,
+            timeout=30
+        )
+
+        if children_response.status_code == 200:
+
+            children = children_response.json().get("value", [])
+
+            st.success("08_Continuing Education folder found.")
+
+            for item in children:
+                st.write(item["name"])
+
+        else:
+            st.error("Could not read the contents of the CE folder.")
+            st.write(children_response.status_code)
+            st.write(children_response.text)
+
+    else:
+        st.error("Could not find the exact CE folder.")
 
 else:
-    st.error("Could not read the OneDrive CE folder.")
-    st.write(response.status_code)
-    st.write(response.text)
+    st.error("Could not search OneDrive.")
+    st.write(search_response.status_code)
+    st.write(search_response.text)
 
 # ---------------------------------------------------------
 # BASIC STYLING
