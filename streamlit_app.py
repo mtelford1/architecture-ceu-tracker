@@ -98,8 +98,48 @@ if search_response.status_code == 200:
 
             st.success("08_Continuing Education folder found.")
 
-            for item in children:
-                st.write(item["name"])
+            # Find the AIA folder inside 08_Continuing Education
+
+aia_folder = next(
+    (
+        item for item in children
+        if item.get("name") == "AIA"
+        and "folder" in item
+    ),
+    None
+)
+
+if aia_folder:
+
+    aia_folder_id = aia_folder["id"]
+
+    aia_children_url = (
+        "https://graph.microsoft.com/v1.0/"
+        f"me/drive/items/{aia_folder_id}/children"
+    )
+
+    aia_children_response = requests.get(
+        aia_children_url,
+        headers=headers,
+        timeout=30
+    )
+
+    if aia_children_response.status_code == 200:
+
+        aia_children = aia_children_response.json().get("value", [])
+
+        st.success("AIA folder found.")
+
+        for item in aia_children:
+            st.write(item["name"])
+
+    else:
+        st.error("Could not read the AIA folder.")
+        st.write(aia_children_response.status_code)
+        st.write(aia_children_response.text)
+
+    else:
+    st.error("AIA folder not found.")
 
         else:
             st.error("Could not read the contents of the CE folder.")
@@ -110,9 +150,9 @@ if search_response.status_code == 200:
         st.error("Could not find the exact CE folder.")
 
 else:
-    st.error("Could not search OneDrive.")
-    st.write(search_response.status_code)
-    st.write(search_response.text)
+         st.error("Could not search OneDrive.")
+         st.write(search_response.status_code)
+         st.write(search_response.text)
 
 # ---------------------------------------------------------
 # BASIC STYLING
