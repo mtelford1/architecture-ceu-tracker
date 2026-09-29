@@ -48,13 +48,7 @@ else:
 # ONEDRIVE FOLDER TEST
 # ---------------------------------------------------------
 
-folder_path = "08_Continuing Education/AIA"
-encoded_path = quote(folder_path, safe="/")
-
-url = (
-    "https://graph.microsoft.com/v1.0/"
-    f"me/drive/root:/{encoded_path}:/children"
-)
+url = "https://graph.microsoft.com/v1.0/me/drive/root/children"
 
 headers = {
     "Authorization": f"Bearer {st.user.tokens['access']}"
@@ -78,7 +72,7 @@ else:
     st.error("Could not read the OneDrive CE folder.")
     st.write(response.status_code)
     st.write(response.text)
-    
+
 # ---------------------------------------------------------
 # BASIC STYLING
 # ---------------------------------------------------------
