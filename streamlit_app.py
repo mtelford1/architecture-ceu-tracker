@@ -32,6 +32,15 @@ else:
     with login_col2:
         if st.button("Sign out"):
             st.logout()
+            
+# ---------------------------------------------------------
+# MICROSOFT ACCESS TEST
+# ---------------------------------------------------------
+
+if "access" in st.user.tokens:
+    st.success("Microsoft access token available.")
+else:
+    st.error("Microsoft access token not available.")
 
 # ---------------------------------------------------------
 # BASIC STYLING
