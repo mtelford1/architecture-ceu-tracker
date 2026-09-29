@@ -48,7 +48,10 @@ else:
 # ONEDRIVE FOLDER TEST
 # ---------------------------------------------------------
 
-url = "https://graph.microsoft.com/v1.0/me/drive/root/children"
+url = (
+    "https://graph.microsoft.com/v1.0/"
+    "me/drive/root/search(q='08_Continuing Education')"
+)
 
 headers = {
     "Authorization": f"Bearer {st.user.tokens['access']}"
