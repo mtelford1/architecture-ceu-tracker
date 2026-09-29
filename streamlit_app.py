@@ -52,7 +52,7 @@ headers = {
     "Authorization": f"Bearer {st.user.tokens['access']}"
 }
 
-# Search OneDrive for the CE folder
+# Search OneDrive for the Continuing Education folder
 search_url = (
     "https://graph.microsoft.com/v1.0/"
     "me/drive/root/search(q='08_Continuing Education')"
@@ -79,80 +79,76 @@ if search_response.status_code == 200:
 
     if ce_folder:
 
-        folder_id = ce_folder["id"]
+        ce_folder_id = ce_folder["id"]
 
-        children_url = (
+        ce_children_url = (
             "https://graph.microsoft.com/v1.0/"
-            f"me/drive/items/{folder_id}/children"
+            f"me/drive/items/{ce_folder_id}/children"
         )
 
-        children_response = requests.get(
-            children_url,
+        ce_children_response = requests.get(
+            ce_children_url,
             headers=headers,
             timeout=30
         )
 
-        if children_response.status_code == 200:
+        if ce_children_response.status_code == 200:
 
-            children = children_response.json().get("value", [])
+            ce_children = ce_children_response.json().get("value", [])
 
-            st.success("08_Continuing Education folder found.")
+            aia_folder = next(
+                (
+                    item for item in ce_children
+                    if item.get("name") == "AIA"
+                    and "folder" in item
+                ),
+                None
+            )
 
-            # Find the AIA folder inside 08_Continuing Education
+            if aia_folder:
 
-aia_folder = next(
-    (
-        item for item in children
-        if item.get("name") == "AIA"
-        and "folder" in item
-    ),
-    None
-)
+                aia_folder_id = aia_folder["id"]
 
-if aia_folder:
+                aia_children_url = (
+                    "https://graph.microsoft.com/v1.0/"
+                    f"me/drive/items/{aia_folder_id}/children"
+                )
 
-    aia_folder_id = aia_folder["id"]
+                aia_children_response = requests.get(
+                    aia_children_url,
+                    headers=headers,
+                    timeout=30
+                )
 
-    aia_children_url = (
-        "https://graph.microsoft.com/v1.0/"
-        f"me/drive/items/{aia_folder_id}/children"
-    )
+                if aia_children_response.status_code == 200:
 
-    aia_children_response = requests.get(
-        aia_children_url,
-        headers=headers,
-        timeout=30
-    )
+                    aia_children = aia_children_response.json().get("value", [])
 
-    if aia_children_response.status_code == 200:
+                    st.success("AIA folder found.")
 
-        aia_children = aia_children_response.json().get("value", [])
+                    for item in aia_children:
+                        st.write(item["name"])
 
-        st.success("AIA folder found.")
+                else:
+                    st.error("Could not read the AIA folder.")
+                    st.write(aia_children_response.status_code)
+                    st.write(aia_children_response.text)
 
-        for item in aia_children:
-            st.write(item["name"])
-
-    else:
-        st.error("Could not read the AIA folder.")
-        st.write(aia_children_response.status_code)
-        st.write(aia_children_response.text)
-
-    else:
-    st.error("AIA folder not found.")
+            else:
+                st.error("AIA folder not found.")
 
         else:
-            st.error("Could not read the contents of the CE folder.")
-            st.write(children_response.status_code)
-            st.write(children_response.text)
+            st.error("Could not read the Continuing Education folder.")
+            st.write(ce_children_response.status_code)
+            st.write(ce_children_response.text)
 
     else:
-        st.error("Could not find the exact CE folder.")
+        st.error("Could not find the Continuing Education folder.")
 
 else:
-         st.error("Could not search OneDrive.")
-         st.write(search_response.status_code)
-         st.write(search_response.text)
+    st.error("Could not search OneDrive.")
+    st.write(search_response.status_code)
+    st.write(search_response.text)
 
 # ---------------------------------------------------------
 # BASIC STYLING
