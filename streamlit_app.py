@@ -1,4 +1,6 @@
 import streamlit as st
+import requests
+from urllib.parse import quote
 
 # ---------------------------------------------------------
 # PAGE SETUP
@@ -32,7 +34,7 @@ else:
     with login_col2:
         if st.button("Sign out"):
             st.logout()
-            
+
 # ---------------------------------------------------------
 # MICROSOFT ACCESS TEST
 # ---------------------------------------------------------
@@ -42,6 +44,41 @@ if "access" in st.user.tokens:
 else:
     st.error("Microsoft access token not available.")
 
+# ---------------------------------------------------------
+# ONEDRIVE FOLDER TEST
+# ---------------------------------------------------------
+
+folder_path = "08_Continuing Education/AIA"
+encoded_path = quote(folder_path, safe="/")
+
+url = (
+    "https://graph.microsoft.com/v1.0/"
+    f"me/drive/root:/{encoded_path}:/children"
+)
+
+headers = {
+    "Authorization": f"Bearer {st.user.tokens['access']}"
+}
+
+response = requests.get(
+    url,
+    headers=headers,
+    timeout=30
+)
+
+if response.status_code == 200:
+    items = response.json().get("value", [])
+
+    st.success("OneDrive CE folder found.")
+
+    for item in items:
+        st.write(item["name"])
+
+else:
+    st.error("Could not read the OneDrive CE folder.")
+    st.write(response.status_code)
+    st.write(response.text)
+    
 # ---------------------------------------------------------
 # BASIC STYLING
 # ---------------------------------------------------------
