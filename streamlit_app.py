@@ -960,7 +960,6 @@ for year_folder in year_folders:
         else "Needs review"
     }
 )
-            )
 
         except Exception:
 
@@ -1041,7 +1040,7 @@ for year_folder in year_folders:
                     [6, 1, 1]
                 )
 
-                wwith name_col:
+                with name_col:
 
     st.write(
         record["name"]
