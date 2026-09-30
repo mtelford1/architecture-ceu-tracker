@@ -73,38 +73,36 @@ if "access" in st.user.tokens:
             payload.get("scp", "Not found")
         )
 
-from datetime import datetime, timezone
+        st.write(
+            "Token issued:",
+            datetime.fromtimestamp(
+                payload.get("iat", 0),
+                timezone.utc
+            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
 
-st.write(
-    "Token issued:",
-    datetime.fromtimestamp(
-        payload.get("iat", 0),
-        timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
-)
+        st.write(
+            "Token valid from:",
+            datetime.fromtimestamp(
+                payload.get("nbf", 0),
+                timezone.utc
+            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
 
-st.write(
-    "Token valid from:",
-    datetime.fromtimestamp(
-        payload.get("nbf", 0),
-        timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
-)
+        st.write(
+            "Token expires:",
+            datetime.fromtimestamp(
+                payload.get("exp", 0),
+                timezone.utc
+            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
 
-st.write(
-    "Token expires:",
-    datetime.fromtimestamp(
-        payload.get("exp", 0),
-        timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
-)
-
-st.write(
-    "Current time:",
-    datetime.now(
-        timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
-)
+        st.write(
+            "Current time:",
+            datetime.now(
+                timezone.utc
+            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
 
     except Exception:
         st.warning(
@@ -113,7 +111,6 @@ st.write(
 
 else:
     st.error("Microsoft access token not available.")
-
 # ---------------------------------------------------------
 # ONEDRIVE DATA LOAD
 # ---------------------------------------------------------
