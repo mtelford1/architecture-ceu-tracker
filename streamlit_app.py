@@ -1180,7 +1180,7 @@ for year_folder in year_folders:
             with course_col:
 
                 st.write(
-                    record["title"]
+                    record["name"]
                 )
 
                 if (
