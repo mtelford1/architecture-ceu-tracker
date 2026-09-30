@@ -1,6 +1,10 @@
 import streamlit as st
 import requests
+import re
+
+from io import BytesIO
 from urllib.parse import quote
+from pypdf import PdfReader
 
 # ---------------------------------------------------------
 # PAGE SETUP
@@ -398,21 +402,321 @@ with col3:
         "Washington",
         credentials["Washington"]
     )
-    # ---------------------------------------------------------
+  # ---------------------------------------------------------
+# CERTIFICATE READING
+# ---------------------------------------------------------
+
+@st.cache_data(
+    ttl=86400,
+    show_spinner=False
+)
+def read_pdf_text(
+    file_id,
+    etag,
+    _access_token
+):
+
+    url = (
+        "https://graph.microsoft.com/v1.0/"
+        f"me/drive/items/{file_id}/content"
+    )
+
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {_access_token}"
+        },
+        timeout=60
+    )
+
+    response.raise_for_status()
+
+    pdf_file = BytesIO(response.content)
+
+    reader = PdfReader(pdf_file)
+
+    pages = []
+
+    for page in reader.pages:
+
+        page_text = page.extract_text()
+
+        if page_text:
+            pages.append(page_text)
+
+    return "\n".join(pages)
+
+
+# ---------------------------------------------------------
+# CERTIFICATE DATA EXTRACTION
+# ---------------------------------------------------------
+
+def extract_certificate_data(
+    text,
+    filename
+):
+
+    # Default course title is the filename
+    title = re.sub(
+        r"\.pdf$",
+        "",
+        filename,
+        flags=re.IGNORECASE
+    )
+
+    completion_date = ""
+
+    aia_credit = None
+    hsw_credit = 0.0
+
+    if not text.strip():
+
+        return {
+            "title": title,
+            "date": "",
+            "aia": None,
+            "hsw": None,
+            "status": "No readable PDF text"
+        }
+
+    # ---------------------------------------------
+    # CLEAN TEXT
+    # ---------------------------------------------
+
+    lines = []
+
+    for line in text.splitlines():
+
+        clean_line = re.sub(
+            r"\s+",
+            " ",
+            line
+        ).strip()
+
+        if clean_line:
+            lines.append(clean_line)
+
+    compact_text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    # ---------------------------------------------
+    # COURSE TITLE
+    # ---------------------------------------------
+
+    title_patterns = [
+        r"Course Title\s*[:\-]\s*(.+)",
+        r"Course Name\s*[:\-]\s*(.+)",
+        r"Program Title\s*[:\-]\s*(.+)",
+        r"Program Name\s*[:\-]\s*(.+)",
+    ]
+
+    for pattern in title_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            candidate = match.group(1).strip()
+
+            candidate = re.sub(
+                r"\s+",
+                " ",
+                candidate
+            )
+
+            if candidate:
+                title = candidate
+
+            break
+
+    # ---------------------------------------------
+    # COMPLETION DATE
+    # ---------------------------------------------
+
+    date_patterns = [
+        r"Completion Date\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
+        r"Date Completed\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
+        r"Completed\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
+    ]
+
+    for pattern in date_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            completion_date = re.sub(
+                r"\s+",
+                " ",
+                match.group(1)
+            ).strip()
+
+            break
+
+    # ---------------------------------------------
+    # AIA LU / HSW
+    # ---------------------------------------------
+
+    aia_candidates = []
+    hsw_candidates = []
+
+    lu_pattern = re.compile(
+        r"(?<!\d)"
+        r"(\d+(?:\.\d+)?)"
+        r"\s*"
+        r"(?:AIA\s*)?"
+        r"LU(?:s)?\b",
+        re.IGNORECASE
+    )
+
+    for match in lu_pattern.finditer(
+        compact_text
+    ):
+
+        value = float(
+            match.group(1)
+        )
+
+        # Prevent things such as years or IDs
+        # from being interpreted as credits.
+        if 0 < value <= 20:
+
+            aia_candidates.append(
+                value
+            )
+
+            context_start = max(
+                0,
+                match.start() - 50
+            )
+
+            context_end = min(
+                len(compact_text),
+                match.end() + 50
+            )
+
+            context = compact_text[
+                context_start:context_end
+            ]
+
+            if re.search(
+                r"\bHSW\b",
+                context,
+                re.IGNORECASE
+            ):
+                hsw_candidates.append(
+                    value
+                )
+
+    # Some certificates explicitly state
+    # the HSW value separately.
+
+    explicit_hsw_patterns = [
+        r"(\d+(?:\.\d+)?)\s*LU\s*[/|]\s*HSW",
+        r"(\d+(?:\.\d+)?)\s*HSW\b",
+        r"\bHSW\s*(?:LU|Credit|Credits)?"
+        r"\s*[:\-]?\s*"
+        r"(\d+(?:\.\d+)?)",
+    ]
+
+    for pattern in explicit_hsw_patterns:
+
+        matches = re.findall(
+            pattern,
+            compact_text,
+            re.IGNORECASE
+        )
+
+        for value in matches:
+
+            try:
+                number = float(value)
+
+                if 0 < number <= 20:
+                    hsw_candidates.append(
+                        number
+                    )
+
+            except ValueError:
+                pass
+
+    # ---------------------------------------------
+    # FINAL CREDIT VALUES
+    # ---------------------------------------------
+
+    if aia_candidates:
+
+        aia_credit = max(
+            aia_candidates
+        )
+
+    if hsw_candidates:
+
+        hsw_credit = max(
+            hsw_candidates
+        )
+
+    # If the document clearly identifies
+    # HSW credit but the LU parser missed
+    # the general AIA amount, HSW necessarily
+    # counts as LU as well.
+
+    if (
+        aia_credit is None
+        and hsw_credit > 0
+    ):
+        aia_credit = hsw_credit
+
+    if aia_credit is None:
+
+        status = "Credits need review"
+
+    else:
+
+        status = "Parsed"
+
+    return {
+        "title": title,
+        "date": completion_date,
+        "aia": aia_credit,
+        "hsw": hsw_credit,
+        "status": status
+    }
+
+# ---------------------------------------------------------
 # CERTIFICATES BY YEAR
 # ---------------------------------------------------------
 
 st.divider()
 
-st.subheader("Certificates by Year")
+st.subheader(
+    "Certificates by Year"
+)
 
 st.caption(
-    "Continuing education certificates from OneDrive."
+    "Certificate information is read automatically "
+    "from the PDFs stored in OneDrive."
 )
+
+access_token = st.user.tokens[
+    "access"
+]
 
 for year_folder in year_folders:
 
     year = year_folder["year"]
+
     folder_id = year_folder["id"]
 
     files_url = (
@@ -426,47 +730,253 @@ for year_folder in year_folders:
         timeout=30
     )
 
-    if files_response.status_code == 200:
-
-        items = files_response.json().get("value", [])
-
-        # Only show actual files, not subfolders
-        certificate_files = [
-            item
-            for item in items
-            if "file" in item
-        ]
-
-        certificate_files = sorted(
-            certificate_files,
-            key=lambda x: x.get("name", "").lower()
-        )
+    if files_response.status_code != 200:
 
         with st.expander(
-            f"{year} — {len(certificate_files)} certificates"
+            str(year)
         ):
 
-            if certificate_files:
-
-                for file in certificate_files:
-
-                    file_name = file.get(
-                        "name",
-                        "Unnamed file"
-                    )
-
-                    st.write(file_name)
-
-            else:
-                st.caption(
-                    "No certificate files found."
-                )
-
-    else:
-
-        with st.expander(str(year)):
-
             st.error(
-                "Could not read this year's folder."
+                "Could not read this "
+                "year's OneDrive folder."
             )
 
+        continue
+
+    items = files_response.json().get(
+        "value",
+        []
+    )
+
+    # Only process PDF files.
+    certificate_files = [
+        item
+        for item in items
+        if (
+            "file" in item
+            and item.get(
+                "name",
+                ""
+            ).lower().endswith(".pdf")
+        )
+    ]
+
+    certificate_files = sorted(
+        certificate_files,
+        key=lambda x: x.get(
+            "name",
+            ""
+        ).lower()
+    )
+
+    certificate_records = []
+
+    with st.spinner(
+        f"Reading {year} certificates..."
+    ):
+
+        for file in certificate_files:
+
+            filename = file.get(
+                "name",
+                "Unnamed certificate"
+            )
+
+            file_id = file["id"]
+
+            etag = file.get(
+                "eTag",
+                ""
+            )
+
+            try:
+
+                pdf_text = read_pdf_text(
+                    file_id,
+                    etag,
+                    access_token
+                )
+
+                certificate = (
+                    extract_certificate_data(
+                        pdf_text,
+                        filename
+                    )
+                )
+
+            except Exception:
+
+                certificate = {
+                    "title": re.sub(
+                        r"\.pdf$",
+                        "",
+                        filename,
+                        flags=re.IGNORECASE
+                    ),
+                    "date": "",
+                    "aia": None,
+                    "hsw": None,
+                    "status": "Could not read PDF"
+                }
+
+            certificate[
+                "filename"
+            ] = filename
+
+            certificate_records.append(
+                certificate
+            )
+
+    # ---------------------------------------------
+    # YEAR TOTALS
+    # ---------------------------------------------
+
+    total_aia = sum(
+        record["aia"] or 0
+        for record in certificate_records
+    )
+
+    total_hsw = sum(
+        record["hsw"] or 0
+        for record in certificate_records
+    )
+
+    needs_review = sum(
+        1
+        for record in certificate_records
+        if record["status"] != "Parsed"
+    )
+
+    expander_title = (
+        f"{year} — "
+        f"{total_aia:.1f} AIA / "
+        f"{total_hsw:.1f} HSW"
+    )
+
+    if needs_review:
+
+        expander_title += (
+            f" — {needs_review} needs review"
+        )
+
+    # ---------------------------------------------
+    # YEAR EXPANDER
+    # ---------------------------------------------
+
+    with st.expander(
+        expander_title
+    ):
+
+        if not certificate_records:
+
+            st.caption(
+                "No PDF certificates found."
+            )
+
+            continue
+
+        heading_course, \
+        heading_date, \
+        heading_aia, \
+        heading_hsw = st.columns(
+            [5, 2, 1, 1]
+        )
+
+        with heading_course:
+            st.markdown(
+                "**Course / Certificate**"
+            )
+
+        with heading_date:
+            st.markdown(
+                "**Date**"
+            )
+
+        with heading_aia:
+            st.markdown(
+                "**AIA**"
+            )
+
+        with heading_hsw:
+            st.markdown(
+                "**HSW**"
+            )
+
+        st.divider()
+
+        for record in certificate_records:
+
+            course_col, \
+            date_col, \
+            aia_col, \
+            hsw_col = st.columns(
+                [5, 2, 1, 1]
+            )
+
+            with course_col:
+
+                st.write(
+                    record["title"]
+                )
+
+                if (
+                    record["status"]
+                    != "Parsed"
+                ):
+
+                    st.caption(
+                        f"⚠ {record['status']}"
+                    )
+
+            with date_col:
+
+                st.write(
+                    record["date"]
+                    or "—"
+                )
+
+            with aia_col:
+
+                if record["aia"] is None:
+                    st.write("—")
+                else:
+                    st.write(
+                        f'{record["aia"]:.1f}'
+                    )
+
+            with hsw_col:
+
+                if record["hsw"] is None:
+                    st.write("—")
+                else:
+                    st.write(
+                        f'{record["hsw"]:.1f}'
+                    )
+
+        # ---------------------------------------------
+        # YEAR TOTAL
+        # ---------------------------------------------
+
+        st.divider()
+
+        total_col, \
+        blank_col, \
+        aia_total_col, \
+        hsw_total_col = st.columns(
+            [5, 2, 1, 1]
+        )
+
+        with total_col:
+            st.markdown(
+                "**YEAR TOTAL**"
+            )
+
+        with aia_total_col:
+            st.markdown(
+                f"**{total_aia:.1f}**"
+            )
+
+        with hsw_total_col:
+            st.markdown(
+                f"**{total_hsw:.1f}**"
+            )
