@@ -1,14 +1,129 @@
 import streamlit as st
 import requests
-import re
 import base64
 import json
-from datetime import datetime, timezone
 
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import quote
 from pypdf import PdfReader
 
+# ---------------------------------------------------------
+# PDF READER
+# ---------------------------------------------------------
+
+def read_onedrive_pdf(file_id, access_token):
+
+    url = (
+        "https://graph.microsoft.com/v1.0/"
+        f"me/drive/items/{file_id}/content"
+    )
+
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}"
+        },
+        timeout=60
+    )
+
+    response.raise_for_status()
+
+    pdf_file = BytesIO(response.content)
+
+    reader = PdfReader(pdf_file)
+
+    text = []
+
+    for page in reader.pages:
+
+        page_text = page.extract_text()
+
+        if page_text:
+            text.append(page_text)
+
+    return "\n".join(text)
+
+# ---------------------------------------------------------
+# CERTIFICATE CREDIT PARSER
+# ---------------------------------------------------------
+
+import re
+
+
+def extract_aia_credits(text):
+
+    clean_text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    aia_credit = None
+    hsw_credit = 0.0
+
+    # Look for values such as:
+    # 1.0 AIA LU
+    # 1 AIA LU
+    # 1.0 LU
+    # 1 LU/HSW
+    # 1.0 HSW
+
+    aia_patterns = [
+        r"(\d+(?:\.\d+)?)\s*AIA\s*LU",
+        r"(\d+(?:\.\d+)?)\s*LU\b",
+    ]
+
+    hsw_patterns = [
+        r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU\s*[/\-]?\s*HSW",
+        r"(\d+(?:\.\d+)?)\s*HSW\b",
+    ]
+
+    # Find AIA/LU credit
+    for pattern in aia_patterns:
+
+        match = re.search(
+            pattern,
+            clean_text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            value = float(
+                match.group(1)
+            )
+
+            if 0 < value <= 20:
+                aia_credit = value
+                break
+
+    # Find HSW credit
+    for pattern in hsw_patterns:
+
+        match = re.search(
+            pattern,
+            clean_text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            value = float(
+                match.group(1)
+            )
+
+            if 0 < value <= 20:
+                hsw_credit = value
+                break
+
+    # If certificate says something like
+    # "1.0 LU/HSW", that credit counts as
+    # both AIA LU and HSW.
+    if aia_credit is None and hsw_credit > 0:
+        aia_credit = hsw_credit
+
+    return aia_credit, hsw_credit
 
 # ---------------------------------------------------------
 # PAGE SETUP
@@ -751,23 +866,18 @@ def extract_certificate_data(
 
 st.divider()
 
-st.subheader(
-    "Certificates by Year"
-)
+st.subheader("Certificates by Year")
 
 st.caption(
-    "Certificate information is read automatically "
-    "from the PDFs stored in OneDrive."
+    "Continuing education certificates from OneDrive."
 )
 
-access_token = st.user.tokens[
-    "access"
-]
+access_token = st.user.tokens["access"]
+
 
 for year_folder in year_folders:
 
     year = year_folder["year"]
-
     folder_id = year_folder["id"]
 
     files_url = (
@@ -783,13 +893,9 @@ for year_folder in year_folders:
 
     if files_response.status_code != 200:
 
-        with st.expander(
-            str(year)
-        ):
-
+        with st.expander(str(year)):
             st.error(
-                "Could not read this "
-                "year's OneDrive folder."
+                "Could not read this year's folder."
             )
 
         continue
@@ -799,7 +905,7 @@ for year_folder in year_folders:
         []
     )
 
-    # Only process PDF files.
+    # Only process PDF files
     certificate_files = [
         item
         for item in items
@@ -822,61 +928,168 @@ for year_folder in year_folders:
 
     certificate_records = []
 
-    with st.spinner(
-        f"Reading {year} certificates..."
-    ):
+    # Read each certificate automatically
+    for certificate_file in certificate_files:
 
-        for file in certificate_files:
+        file_name = certificate_file.get(
+            "name",
+            "Unnamed Certificate"
+        )
 
-            filename = file.get(
-                "name",
-                "Unnamed certificate"
+        file_id = certificate_file["id"]
+
+        try:
+
+            certificate_text = read_onedrive_pdf(
+                file_id,
+                access_token
             )
 
-            file_id = file["id"]
-
-            etag = file.get(
-                "eTag",
-                ""
+            aia_credit, hsw_credit = extract_aia_credits(
+                certificate_text
             )
-
-            try:
-
-                pdf_text = read_pdf_text(
-                    file_id,
-                    etag,
-                    access_token
-                )
-
-                certificate = (
-                    extract_certificate_data(
-                        pdf_text,
-                        filename
-                    )
-                )
-
-            except Exception:
-
-                certificate = {
-                    "title": re.sub(
-                        r"\.pdf$",
-                        "",
-                        filename,
-                        flags=re.IGNORECASE
-                    ),
-                    "date": "",
-                    "aia": None,
-                    "hsw": None,
-                    "status": "Could not read PDF"
-                }
-
-            certificate[
-                "filename"
-            ] = filename
 
             certificate_records.append(
-                certificate
+                {
+                    "name": file_name,
+                    "aia": aia_credit,
+                    "hsw": hsw_credit,
+                    "status": "Read"
+                    if aia_credit is not None
+                    else "Needs review"
+                }
             )
+
+        except Exception:
+
+            certificate_records.append(
+                {
+                    "name": file_name,
+                    "aia": None,
+                    "hsw": None,
+                    "status": "Could not read"
+                }
+            )
+
+    # Calculate annual totals
+    total_aia = sum(
+        record["aia"] or 0
+        for record in certificate_records
+    )
+
+    total_hsw = sum(
+        record["hsw"] or 0
+        for record in certificate_records
+    )
+
+    needs_review = sum(
+        1
+        for record in certificate_records
+        if record["status"] != "Read"
+    )
+
+    expander_title = (
+        f"{year} — "
+        f"{total_aia:.1f} AIA / "
+        f"{total_hsw:.1f} HSW"
+    )
+
+    if needs_review > 0:
+
+        expander_title += (
+            f" — {needs_review} needs review"
+        )
+
+    with st.expander(expander_title):
+
+        if not certificate_records:
+
+            st.caption(
+                "No PDF certificates found."
+            )
+
+        else:
+
+            # Column headings
+            name_col, aia_col, hsw_col = st.columns(
+                [6, 1, 1]
+            )
+
+            with name_col:
+                st.markdown(
+                    "**Certificate**"
+                )
+
+            with aia_col:
+                st.markdown(
+                    "**AIA**"
+                )
+
+            with hsw_col:
+                st.markdown(
+                    "**HSW**"
+                )
+
+            st.divider()
+
+            # Certificate rows
+            for record in certificate_records:
+
+                name_col, aia_col, hsw_col = st.columns(
+                    [6, 1, 1]
+                )
+
+                with name_col:
+
+                    st.write(
+                        record["name"]
+                    )
+
+                    if record["status"] != "Read":
+
+                        st.caption(
+                            f"⚠ {record['status']}"
+                        )
+
+                with aia_col:
+
+                    if record["aia"] is None:
+                        st.write("—")
+                    else:
+                        st.write(
+                            f'{record["aia"]:.1f}'
+                        )
+
+                with hsw_col:
+
+                    if record["hsw"] is None:
+                        st.write("—")
+                    else:
+                        st.write(
+                            f'{record["hsw"]:.1f}'
+                        )
+
+            # Year totals
+            st.divider()
+
+            total_col, aia_total_col, hsw_total_col = st.columns(
+                [6, 1, 1]
+            )
+
+            with total_col:
+                st.markdown(
+                    "**YEAR TOTAL**"
+                )
+
+            with aia_total_col:
+                st.markdown(
+                    f"**{total_aia:.1f}**"
+                )
+
+            with hsw_total_col:
+                st.markdown(
+                    f"**{total_hsw:.1f}**"
+                )
 
     # ---------------------------------------------
     # YEAR TOTALS
