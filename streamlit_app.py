@@ -880,6 +880,10 @@ for year_folder in year_folders:
     year = year_folder["year"]
     folder_id = year_folder["id"]
 
+    # -----------------------------------------------------
+    # GET FILES FROM YEAR FOLDER
+    # -----------------------------------------------------
+
     files_url = (
         "https://graph.microsoft.com/v1.0/"
         f"me/drive/items/{folder_id}/children"
@@ -894,8 +898,9 @@ for year_folder in year_folders:
     if files_response.status_code != 200:
 
         with st.expander(str(year)):
+
             st.error(
-                "Could not read this year's folder."
+                "Could not read this year's OneDrive folder."
             )
 
         continue
@@ -905,7 +910,10 @@ for year_folder in year_folders:
         []
     )
 
-    # Only process PDF files
+    # -----------------------------------------------------
+    # KEEP PDF FILES ONLY
+    # -----------------------------------------------------
+
     certificate_files = [
         item
         for item in items
@@ -926,9 +934,12 @@ for year_folder in year_folders:
         ).lower()
     )
 
+    # -----------------------------------------------------
+    # READ CERTIFICATES
+    # -----------------------------------------------------
+
     certificate_records = []
 
-    # Read each certificate automatically
     for certificate_file in certificate_files:
 
         file_name = certificate_file.get(
@@ -950,29 +961,35 @@ for year_folder in year_folders:
             )
 
             certificate_records.append(
-    {
-        "name": file_name,
-        "aia": aia_credit,
-        "hsw": hsw_credit,
-        "text": certificate_text,
-        "status": "Read"
-        if aia_credit is not None
-        else "Needs review"
-    }
-)
+                {
+                    "name": file_name,
+                    "aia": aia_credit,
+                    "hsw": hsw_credit,
+                    "text": certificate_text,
+                    "status": (
+                        "Read"
+                        if aia_credit is not None
+                        else "Needs review"
+                    )
+                }
+            )
 
-        except Exception:
+        except Exception as error:
 
             certificate_records.append(
                 {
                     "name": file_name,
                     "aia": None,
                     "hsw": None,
+                    "text": "",
                     "status": "Could not read"
                 }
             )
 
-    # Calculate annual totals
+    # -----------------------------------------------------
+    # CALCULATE YEAR TOTALS
+    # -----------------------------------------------------
+
     total_aia = sum(
         record["aia"] or 0
         for record in certificate_records
@@ -989,6 +1006,10 @@ for year_folder in year_folders:
         if record["status"] != "Read"
     )
 
+    # -----------------------------------------------------
+    # YEAR HEADING
+    # -----------------------------------------------------
+
     expander_title = (
         f"{year} — "
         f"{total_aia:.1f} AIA / "
@@ -1001,6 +1022,10 @@ for year_folder in year_folders:
             f" — {needs_review} needs review"
         )
 
+    # -----------------------------------------------------
+    # YEAR EXPANDER
+    # -----------------------------------------------------
+
     with st.expander(expander_title):
 
         if not certificate_records:
@@ -1011,7 +1036,10 @@ for year_folder in year_folders:
 
         else:
 
-            # Column headings
+            # -------------------------------------------------
+            # COLUMN HEADINGS
+            # -------------------------------------------------
+
             name_col, aia_col, hsw_col = st.columns(
                 [6, 1, 1]
             )
@@ -1033,8 +1061,13 @@ for year_folder in year_folders:
 
             st.divider()
 
-            # Certificate rows
-            for record in certificate_records:
+            # -------------------------------------------------
+            # CERTIFICATE ROWS
+            # -------------------------------------------------
+
+            for index, record in enumerate(
+                certificate_records
+            ):
 
                 name_col, aia_col, hsw_col = st.columns(
                     [6, 1, 1]
@@ -1042,40 +1075,61 @@ for year_folder in year_folders:
 
                 with name_col:
 
-    st.write(
-        record["name"]
-    )
+                    st.write(
+                        record["name"]
+                    )
 
-    if record["status"] != "Read":
+                    if record["status"] != "Read":
 
-        st.caption(
-            f"⚠ {record['status']}"
-        )
+                        st.caption(
+                            f"⚠ {record['status']}"
+                        )
 
-        with st.expander("Show extracted PDF text"):
+                        show_text = st.checkbox(
+                            "Show extracted PDF text",
+                            key=(
+                                f"show_text_"
+                                f"{year}_"
+                                f"{index}"
+                            )
+                        )
 
-            extracted_text = record.get(
-                "text",
-                ""
-            )
+                        if show_text:
 
-            if extracted_text.strip():
+                            extracted_text = record.get(
+                                "text",
+                                ""
+                            )
 
-                st.text(
-                    extracted_text[:5000]
-                )
+                            if extracted_text.strip():
 
-            else:
+                                st.text_area(
+                                    "Extracted text",
+                                    value=extracted_text[:5000],
+                                    height=200,
+                                    disabled=True,
+                                    key=(
+                                        f"pdf_text_"
+                                        f"{year}_"
+                                        f"{index}"
+                                    )
+                                )
 
-                st.write(
-                    "No readable text was extracted from this PDF."
-                )
+                            else:
+
+                                st.write(
+                                    "No readable text was "
+                                    "extracted from this PDF."
+                                )
 
                 with aia_col:
 
                     if record["aia"] is None:
+
                         st.write("—")
+
                     else:
+
                         st.write(
                             f'{record["aia"]:.1f}'
                         )
@@ -1083,13 +1137,19 @@ for year_folder in year_folders:
                 with hsw_col:
 
                     if record["hsw"] is None:
+
                         st.write("—")
+
                     else:
+
                         st.write(
                             f'{record["hsw"]:.1f}'
                         )
 
-            # Year totals
+            # -------------------------------------------------
+            # YEAR TOTAL
+            # -------------------------------------------------
+
             st.divider()
 
             total_col, aia_total_col, hsw_total_col = st.columns(
@@ -1097,16 +1157,19 @@ for year_folder in year_folders:
             )
 
             with total_col:
+
                 st.markdown(
                     "**YEAR TOTAL**"
                 )
 
             with aia_total_col:
+
                 st.markdown(
                     f"**{total_aia:.1f}**"
                 )
 
             with hsw_total_col:
+
                 st.markdown(
                     f"**{total_hsw:.1f}**"
                 )
