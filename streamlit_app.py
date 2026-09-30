@@ -44,7 +44,7 @@ else:
             st.logout()
 
 # ---------------------------------------------------------
-# MICROSOFT ACCESS TOKEN TEST
+# MICROSOFT ACCESS TOKEN CHECK
 # ---------------------------------------------------------
 
 if "access" in st.user.tokens:
@@ -62,6 +62,7 @@ if "access" in st.user.tokens:
         )
 
         token_expiration = payload.get("exp", 0)
+
         current_timestamp = datetime.now(
             timezone.utc
         ).timestamp()
@@ -77,68 +78,13 @@ if "access" in st.user.tokens:
 
             st.stop()
 
-        st.success(
-            "Microsoft access token available."
+    except Exception:
+
+        st.error(
+            "Microsoft connection could not be verified."
         )
 
-        st.write(
-            "Token audience:",
-            payload.get("aud", "Not found")
-        )
-
-        st.write(
-            "Token scopes:",
-            payload.get("scp", "Not found")
-        )
-
-        st.write(
-            "Token issued:",
-            datetime.fromtimestamp(
-                payload.get("iat", 0),
-                timezone.utc
-            ).strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            )
-        )
-
-        st.write(
-            "Token valid from:",
-            datetime.fromtimestamp(
-                payload.get("nbf", 0),
-                timezone.utc
-            ).strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            )
-        )
-
-        st.write(
-            "Token expires:",
-            datetime.fromtimestamp(
-                payload.get("exp", 0),
-                timezone.utc
-            ).strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            )
-        )
-
-        st.write(
-            "Current time:",
-            datetime.now(
-                timezone.utc
-            ).strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            )
-        )
-
-    except Exception as error:
-
-        st.warning(
-            "Access token exists, but its claims could not be read."
-        )
-
-        st.write(
-            str(error)
-        )
+        st.stop()
 
 else:
 
@@ -146,6 +92,7 @@ else:
         "Microsoft access token not available."
     )
 
+    st.stop()
 # ---------------------------------------------------------
 # ONEDRIVE DATA LOAD
 # ---------------------------------------------------------
