@@ -1,10 +1,13 @@
 import streamlit as st
 import requests
 import re
+import base64
+import json
 
 from io import BytesIO
 from urllib.parse import quote
 from pypdf import PdfReader
+
 
 # ---------------------------------------------------------
 # PAGE SETUP
@@ -40,11 +43,40 @@ else:
             st.logout()
 
 # ---------------------------------------------------------
-# MICROSOFT ACCESS TEST
+# MICROSOFT ACCESS TOKEN TEST
 # ---------------------------------------------------------
 
 if "access" in st.user.tokens:
-    st.success("Microsoft access token available.")
+
+    access_token = st.user.tokens["access"]
+
+    try:
+        payload_part = access_token.split(".")[1]
+        payload_part += "=" * (-len(payload_part) % 4)
+
+        payload = json.loads(
+            base64.urlsafe_b64decode(
+                payload_part
+            ).decode("utf-8")
+        )
+
+        st.success("Microsoft access token available.")
+
+        st.write(
+            "Token audience:",
+            payload.get("aud", "Not found")
+        )
+
+        st.write(
+            "Token scopes:",
+            payload.get("scp", "Not found")
+        )
+
+    except Exception:
+        st.warning(
+            "Access token exists, but its claims could not be read."
+        )
+
 else:
     st.error("Microsoft access token not available.")
 
