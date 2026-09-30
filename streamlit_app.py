@@ -61,7 +61,25 @@ if "access" in st.user.tokens:
             ).decode("utf-8")
         )
 
-        st.success("Microsoft access token available.")
+        token_expiration = payload.get("exp", 0)
+        current_timestamp = datetime.now(
+            timezone.utc
+        ).timestamp()
+
+        if token_expiration <= current_timestamp:
+
+            st.warning(
+                "Your Microsoft OneDrive connection has expired."
+            )
+
+            if st.button("Reconnect Microsoft"):
+                st.logout()
+
+            st.stop()
+
+        st.success(
+            "Microsoft access token available."
+        )
 
         st.write(
             "Token audience:",
@@ -78,7 +96,9 @@ if "access" in st.user.tokens:
             datetime.fromtimestamp(
                 payload.get("iat", 0),
                 timezone.utc
-            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
         )
 
         st.write(
@@ -86,7 +106,9 @@ if "access" in st.user.tokens:
             datetime.fromtimestamp(
                 payload.get("nbf", 0),
                 timezone.utc
-            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
         )
 
         st.write(
@@ -94,23 +116,36 @@ if "access" in st.user.tokens:
             datetime.fromtimestamp(
                 payload.get("exp", 0),
                 timezone.utc
-            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
         )
 
         st.write(
             "Current time:",
             datetime.now(
                 timezone.utc
-            ).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
         )
 
-    except Exception:
+    except Exception as error:
+
         st.warning(
             "Access token exists, but its claims could not be read."
         )
 
+        st.write(
+            str(error)
+        )
+
 else:
-    st.error("Microsoft access token not available.")
+
+    st.error(
+        "Microsoft access token not available."
+    )
+
 # ---------------------------------------------------------
 # ONEDRIVE DATA LOAD
 # ---------------------------------------------------------
