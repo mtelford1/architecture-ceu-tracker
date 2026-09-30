@@ -3,6 +3,7 @@ import requests
 import re
 import base64
 import json
+from datetime import datetime, timezone
 
 from io import BytesIO
 from urllib.parse import quote
@@ -71,6 +72,39 @@ if "access" in st.user.tokens:
             "Token scopes:",
             payload.get("scp", "Not found")
         )
+
+from datetime import datetime, timezone
+
+st.write(
+    "Token issued:",
+    datetime.fromtimestamp(
+        payload.get("iat", 0),
+        timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+)
+
+st.write(
+    "Token valid from:",
+    datetime.fromtimestamp(
+        payload.get("nbf", 0),
+        timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+)
+
+st.write(
+    "Token expires:",
+    datetime.fromtimestamp(
+        payload.get("exp", 0),
+        timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+)
+
+st.write(
+    "Current time:",
+    datetime.now(
+        timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+)
 
     except Exception:
         st.warning(
