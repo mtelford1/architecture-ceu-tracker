@@ -1195,8 +1195,7 @@ for year_folder in year_folders:
             with date_col:
 
                 st.write(
-                    record["date"]
-                    or "—"
+                    record.get("date") or "—"
                 )
 
             with aia_col:
