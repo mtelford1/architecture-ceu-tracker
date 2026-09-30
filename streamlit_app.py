@@ -950,14 +950,16 @@ for year_folder in year_folders:
             )
 
             certificate_records.append(
-                {
-                    "name": file_name,
-                    "aia": aia_credit,
-                    "hsw": hsw_credit,
-                    "status": "Read"
-                    if aia_credit is not None
-                    else "Needs review"
-                }
+    {
+        "name": file_name,
+        "aia": aia_credit,
+        "hsw": hsw_credit,
+        "text": certificate_text,
+        "status": "Read"
+        if aia_credit is not None
+        else "Needs review"
+    }
+)
             )
 
         except Exception:
@@ -1039,17 +1041,36 @@ for year_folder in year_folders:
                     [6, 1, 1]
                 )
 
-                with name_col:
+                wwith name_col:
 
-                    st.write(
-                        record["name"]
-                    )
+    st.write(
+        record["name"]
+    )
 
-                    if record["status"] != "Read":
+    if record["status"] != "Read":
 
-                        st.caption(
-                            f"⚠ {record['status']}"
-                        )
+        st.caption(
+            f"⚠ {record['status']}"
+        )
+
+        with st.expander("Show extracted PDF text"):
+
+            extracted_text = record.get(
+                "text",
+                ""
+            )
+
+            if extracted_text.strip():
+
+                st.text(
+                    extracted_text[:5000]
+                )
+
+            else:
+
+                st.write(
+                    "No readable text was extracted from this PDF."
+                )
 
                 with aia_col:
 
