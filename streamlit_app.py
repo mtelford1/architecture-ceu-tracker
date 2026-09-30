@@ -172,6 +172,12 @@ if search_response.status_code == 200:
 
 else:
     st.error("Could not search OneDrive.")
+    st.write(f"Status code: {search_response.status_code}")
+    st.write(search_response.text)
+
+# ---------------------------------------------------------
+# BASIC STYLING
+# ---------------------------------------------------------
 
 # ---------------------------------------------------------
 # BASIC STYLING
