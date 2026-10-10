@@ -336,10 +336,299 @@ else:
     st.write(search_response.text)
 
 # ---------------------------------------------------------
+# CERTIFICATE DATA LOAD
+# ---------------------------------------------------------
+
+certificate_data_by_year = {}
+
+for year_folder in year_folders:
+
+    year = year_folder["year"]
+    folder_id = year_folder["id"]
+
+    files_url = (
+        "https://graph.microsoft.com/v1.0/"
+        f"me/drive/items/{folder_id}/children"
+    )
+
+    files_response = requests.get(
+        files_url,
+        headers=headers,
+        timeout=30
+    )
+
+    if files_response.status_code != 200:
+
+        certificate_data_by_year[year] = {
+            "records": [],
+            "total_aia": 0.0,
+            "total_hsw": 0.0,
+            "needs_review": 0,
+            "folder_error": True,
+        }
+
+        continue
+
+    items = files_response.json().get(
+        "value",
+        []
+    )
+
+    certificate_files = [
+        item
+        for item in items
+        if (
+            "file" in item
+            and item.get(
+                "name",
+                ""
+            ).lower().endswith(".pdf")
+        )
+    ]
+
+    certificate_files = sorted(
+        certificate_files,
+        key=lambda x: x.get(
+            "name",
+            ""
+        ).lower()
+    )
+
+    certificate_records = []
+
+    for certificate_file in certificate_files:
+
+        file_name = certificate_file.get(
+            "name",
+            "Unnamed Certificate"
+        )
+
+        file_id = certificate_file["id"]
+
+        try:
+
+            certificate_text = read_onedrive_pdf(
+                file_id,
+                access_token
+            )
+
+            aia_credit, hsw_credit = extract_aia_credits(
+                certificate_text
+            )
+
+            certificate_records.append(
+                {
+                    "name": file_name,
+                    "aia": aia_credit,
+                    "hsw": hsw_credit,
+                    "text": certificate_text,
+                    "status": (
+                        "Read"
+                        if aia_credit is not None
+                        else "Needs review"
+                    )
+                }
+            )
+
+        except Exception:
+
+            certificate_records.append(
+                {
+                    "name": file_name,
+                    "aia": None,
+                    "hsw": None,
+                    "text": "",
+                    "status": "Could not read"
+                }
+            )
+
+    total_aia = sum(
+        record["aia"] or 0
+        for record in certificate_records
+    )
+
+    total_hsw = sum(
+        record["hsw"] or 0
+        for record in certificate_records
+    )
+
+    needs_review = sum(
+        1
+        for record in certificate_records
+        if record["status"] != "Read"
+    )
+
+    certificate_data_by_year[year] = {
+        "records": certificate_records,
+        "total_aia": total_aia,
+        "total_hsw": total_hsw,
+        "needs_review": needs_review,
+        "folder_error": False,
+    }
+
+
+year_credit_totals = {
+    year: data["total_aia"]
+    for year, data in certificate_data_by_year.items()
+}
+
+
+# ---------------------------------------------------------
+# ROLLOVER CALCULATIONS
+# ---------------------------------------------------------
+
+current_year = datetime.now(
+    timezone.utc
+).year
+
+
+def calculate_annual_rollover(
+    year_totals,
+    required_credits,
+    start_year,
+    current_year
+):
+
+    rollover = 0.0
+
+    current_previous = 0.0
+    current_earned = 0.0
+
+    for year in range(
+        start_year,
+        current_year + 1
+    ):
+
+        previous_rollover = rollover
+        earned = year_totals.get(
+            year,
+            0.0
+        )
+
+        rollover = max(
+            0.0,
+            previous_rollover
+            + earned
+            - required_credits
+        )
+
+        if year == current_year:
+            current_previous = previous_rollover
+            current_earned = earned
+
+    return {
+        "previous_rollover": current_previous,
+        "earned": current_earned,
+        "required": required_credits,
+        "rollover": rollover,
+    }
+
+
+def get_biennial_cycle(
+    anchor_year,
+    year
+):
+
+    cycle_start = (
+        anchor_year
+        + ((year - anchor_year) // 2) * 2
+    )
+
+    return (
+        cycle_start,
+        cycle_start + 1
+    )
+
+
+def calculate_biennial_rollover(
+    year_totals,
+    required_credits,
+    anchor_year,
+    current_year
+):
+
+    current_cycle_start, current_cycle_end = get_biennial_cycle(
+        anchor_year,
+        current_year
+    )
+
+    rollover = 0.0
+
+    current_previous = 0.0
+    current_earned = 0.0
+
+    cycle_start = anchor_year
+
+    while cycle_start <= current_cycle_start:
+
+        cycle_end = cycle_start + 1
+
+        previous_rollover = rollover
+
+        earned = (
+            year_totals.get(
+                cycle_start,
+                0.0
+            )
+            + year_totals.get(
+                cycle_end,
+                0.0
+            )
+        )
+
+        rollover = max(
+            0.0,
+            previous_rollover
+            + earned
+            - required_credits
+        )
+
+        if cycle_start == current_cycle_start:
+            current_previous = previous_rollover
+            current_earned = earned
+
+        cycle_start += 2
+
+    return {
+        "cycle_start": current_cycle_start,
+        "cycle_end": current_cycle_end,
+        "previous_rollover": current_previous,
+        "earned": current_earned,
+        "required": required_credits,
+        "rollover": rollover,
+    }
+
+
+aia_start_year = (
+    min(year_credit_totals)
+    if year_credit_totals
+    else current_year
+)
+
+aia_rollover = calculate_annual_rollover(
+    year_credit_totals,
+    18,
+    aia_start_year,
+    current_year
+)
+
+virginia_rollover = calculate_biennial_rollover(
+    year_credit_totals,
+    16,
+    2015,
+    current_year
+)
+
+washington_rollover = calculate_biennial_rollover(
+    year_credit_totals,
+    24,
+    2025,
+    current_year
+)
+
+
+# ---------------------------------------------------------
 # CREDENTIAL DATA
-#
-# For now these are manual values.
-# We will connect them to a database later.
 # ---------------------------------------------------------
 
 credentials = {
@@ -347,31 +636,46 @@ credentials = {
     "AIA": {
         "full_name": "American Institute of Architects",
         "cycle_length": "1-Year",
-        "current_cycle": "2026",
+        "current_cycle": str(current_year),
         "total_required": 18,
         "hsw_required": 12,
         "credit_type": "LU",
-        "rollover_credits": 0.0,
+        "rollover_credits": aia_rollover["rollover"],
+        "previous_rollover": aia_rollover["previous_rollover"],
+        "current_credits": aia_rollover["earned"],
+        "rollover_period": "year",
     },
 
     "Virginia": {
         "full_name": "Virginia Architect License",
         "cycle_length": "2-Year",
-        "current_cycle": "2025–2026",
+        "current_cycle": (
+            f'{virginia_rollover["cycle_start"]}'
+            f'–{virginia_rollover["cycle_end"]}'
+        ),
         "total_required": 16,
         "hsw_required": "No separate minimum",
         "credit_type": "CE",
-        "rollover_credits": 0.0,
+        "rollover_credits": virginia_rollover["rollover"],
+        "previous_rollover": virginia_rollover["previous_rollover"],
+        "current_credits": virginia_rollover["earned"],
+        "rollover_period": "cycle",
     },
 
     "Washington": {
         "full_name": "Washington Architect License",
         "cycle_length": "2-Year",
-        "current_cycle": "2025–2026",
+        "current_cycle": (
+            f'{washington_rollover["cycle_start"]}'
+            f'–{washington_rollover["cycle_end"]}'
+        ),
         "total_required": 24,
         "hsw_required": 16,
         "credit_type": "PDH",
-        "rollover_credits": 0.0,
+        "rollover_credits": washington_rollover["rollover"],
+        "previous_rollover": washington_rollover["previous_rollover"],
+        "current_credits": washington_rollover["earned"],
+        "rollover_period": "cycle",
     },
 }
 
@@ -408,7 +712,14 @@ def credential_card(name, data):
 
         st.markdown("**Rollover Credits**")
         st.write(
-            f'From Previous Cycle: {data["rollover_credits"]:g}'
+            f'Current Balance: {data["rollover_credits"]:.1f}'
+        )
+
+        st.caption(
+            f'{data["previous_rollover"]:.1f} previous rollover '
+            f'+ {data["current_credits"]:.1f} current '
+            f'{data["rollover_period"]} credits '
+            f'− {data["total_required"]} required'
         )
 
 
@@ -448,297 +759,7 @@ with col3:
         "Washington",
         credentials["Washington"]
     )
-  # ---------------------------------------------------------
-# CERTIFICATE READING
-# ---------------------------------------------------------
 
-@st.cache_data(
-    ttl=86400,
-    show_spinner=False
-)
-def read_pdf_text(
-    file_id,
-    etag,
-    _access_token
-):
-
-    url = (
-        "https://graph.microsoft.com/v1.0/"
-        f"me/drive/items/{file_id}/content"
-    )
-
-    response = requests.get(
-        url,
-        headers={
-            "Authorization": f"Bearer {_access_token}"
-        },
-        timeout=60
-    )
-
-    response.raise_for_status()
-
-    pdf_file = BytesIO(response.content)
-
-    reader = PdfReader(pdf_file)
-
-    pages = []
-
-    for page in reader.pages:
-
-        page_text = page.extract_text()
-
-        if page_text:
-            pages.append(page_text)
-
-    return "\n".join(pages)
-
-
-# ---------------------------------------------------------
-# CERTIFICATE DATA EXTRACTION
-# ---------------------------------------------------------
-
-def extract_certificate_data(
-    text,
-    filename
-):
-
-    # Default course title is the filename
-    title = re.sub(
-        r"\.pdf$",
-        "",
-        filename,
-        flags=re.IGNORECASE
-    )
-
-    completion_date = ""
-
-    aia_credit = None
-    hsw_credit = 0.0
-
-    if not text.strip():
-
-        return {
-            "title": title,
-            "date": "",
-            "aia": None,
-            "hsw": None,
-            "status": "No readable PDF text"
-        }
-
-    # ---------------------------------------------
-    # CLEAN TEXT
-    # ---------------------------------------------
-
-    lines = []
-
-    for line in text.splitlines():
-
-        clean_line = re.sub(
-            r"\s+",
-            " ",
-            line
-        ).strip()
-
-        if clean_line:
-            lines.append(clean_line)
-
-    compact_text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    # ---------------------------------------------
-    # COURSE TITLE
-    # ---------------------------------------------
-
-    title_patterns = [
-        r"Course Title\s*[:\-]\s*(.+)",
-        r"Course Name\s*[:\-]\s*(.+)",
-        r"Program Title\s*[:\-]\s*(.+)",
-        r"Program Name\s*[:\-]\s*(.+)",
-    ]
-
-    for pattern in title_patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            candidate = match.group(1).strip()
-
-            candidate = re.sub(
-                r"\s+",
-                " ",
-                candidate
-            )
-
-            if candidate:
-                title = candidate
-
-            break
-
-    # ---------------------------------------------
-    # COMPLETION DATE
-    # ---------------------------------------------
-
-    date_patterns = [
-        r"Completion Date\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
-        r"Date Completed\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
-        r"Completed\s*[:\-]\s*([A-Za-z0-9,\/\-\s]+)",
-    ]
-
-    for pattern in date_patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            completion_date = re.sub(
-                r"\s+",
-                " ",
-                match.group(1)
-            ).strip()
-
-            break
-
-    # ---------------------------------------------
-    # AIA LU / HSW
-    # ---------------------------------------------
-
-    aia_candidates = []
-    hsw_candidates = []
-
-    lu_pattern = re.compile(
-        r"(?<!\d)"
-        r"(\d+(?:\.\d+)?)"
-        r"\s*"
-        r"(?:AIA\s*)?"
-        r"LU(?:s)?\b",
-        re.IGNORECASE
-    )
-
-    for match in lu_pattern.finditer(
-        compact_text
-    ):
-
-        value = float(
-            match.group(1)
-        )
-
-        # Prevent things such as years or IDs
-        # from being interpreted as credits.
-        if 0 < value <= 20:
-
-            aia_candidates.append(
-                value
-            )
-
-            context_start = max(
-                0,
-                match.start() - 50
-            )
-
-            context_end = min(
-                len(compact_text),
-                match.end() + 50
-            )
-
-            context = compact_text[
-                context_start:context_end
-            ]
-
-            if re.search(
-                r"\bHSW\b",
-                context,
-                re.IGNORECASE
-            ):
-                hsw_candidates.append(
-                    value
-                )
-
-    # Some certificates explicitly state
-    # the HSW value separately.
-
-    explicit_hsw_patterns = [
-        r"(\d+(?:\.\d+)?)\s*LU\s*[/|]\s*HSW",
-        r"(\d+(?:\.\d+)?)\s*HSW\b",
-        r"\bHSW\s*(?:LU|Credit|Credits)?"
-        r"\s*[:\-]?\s*"
-        r"(\d+(?:\.\d+)?)",
-    ]
-
-    for pattern in explicit_hsw_patterns:
-
-        matches = re.findall(
-            pattern,
-            compact_text,
-            re.IGNORECASE
-        )
-
-        for value in matches:
-
-            try:
-                number = float(value)
-
-                if 0 < number <= 20:
-                    hsw_candidates.append(
-                        number
-                    )
-
-            except ValueError:
-                pass
-
-    # ---------------------------------------------
-    # FINAL CREDIT VALUES
-    # ---------------------------------------------
-
-    if aia_candidates:
-
-        aia_credit = max(
-            aia_candidates
-        )
-
-    if hsw_candidates:
-
-        hsw_credit = max(
-            hsw_candidates
-        )
-
-    # If the document clearly identifies
-    # HSW credit but the LU parser missed
-    # the general AIA amount, HSW necessarily
-    # counts as LU as well.
-
-    if (
-        aia_credit is None
-        and hsw_credit > 0
-    ):
-        aia_credit = hsw_credit
-
-    if aia_credit is None:
-
-        status = "Credits need review"
-
-    else:
-
-        status = "Parsed"
-
-    return {
-        "title": title,
-        "date": completion_date,
-        "aia": aia_credit,
-        "hsw": hsw_credit,
-        "status": status
-    }
 
 # ---------------------------------------------------------
 # CERTIFICATES BY YEAR
@@ -752,30 +773,22 @@ st.caption(
     "Continuing education certificates from OneDrive."
 )
 
-access_token = st.user.tokens["access"]
-
-
 for year_folder in year_folders:
 
     year = year_folder["year"]
-    folder_id = year_folder["id"]
 
-    # -----------------------------------------------------
-    # GET FILES FROM YEAR FOLDER
-    # -----------------------------------------------------
-
-    files_url = (
-        "https://graph.microsoft.com/v1.0/"
-        f"me/drive/items/{folder_id}/children"
+    year_data = certificate_data_by_year.get(
+        year,
+        {
+            "records": [],
+            "total_aia": 0.0,
+            "total_hsw": 0.0,
+            "needs_review": 0,
+            "folder_error": True,
+        }
     )
 
-    files_response = requests.get(
-        files_url,
-        headers=headers,
-        timeout=30
-    )
-
-    if files_response.status_code != 200:
+    if year_data["folder_error"]:
 
         with st.expander(str(year)):
 
@@ -785,110 +798,10 @@ for year_folder in year_folders:
 
         continue
 
-    items = files_response.json().get(
-        "value",
-        []
-    )
-
-    # -----------------------------------------------------
-    # KEEP PDF FILES ONLY
-    # -----------------------------------------------------
-
-    certificate_files = [
-        item
-        for item in items
-        if (
-            "file" in item
-            and item.get(
-                "name",
-                ""
-            ).lower().endswith(".pdf")
-        )
-    ]
-
-    certificate_files = sorted(
-        certificate_files,
-        key=lambda x: x.get(
-            "name",
-            ""
-        ).lower()
-    )
-
-    # -----------------------------------------------------
-    # READ CERTIFICATES
-    # -----------------------------------------------------
-
-    certificate_records = []
-
-    for certificate_file in certificate_files:
-
-        file_name = certificate_file.get(
-            "name",
-            "Unnamed Certificate"
-        )
-
-        file_id = certificate_file["id"]
-
-        try:
-
-            certificate_text = read_onedrive_pdf(
-                file_id,
-                access_token
-            )
-
-            aia_credit, hsw_credit = extract_aia_credits(
-                certificate_text
-            )
-
-            certificate_records.append(
-                {
-                    "name": file_name,
-                    "aia": aia_credit,
-                    "hsw": hsw_credit,
-                    "text": certificate_text,
-                    "status": (
-                        "Read"
-                        if aia_credit is not None
-                        else "Needs review"
-                    )
-                }
-            )
-
-        except Exception as error:
-
-            certificate_records.append(
-                {
-                    "name": file_name,
-                    "aia": None,
-                    "hsw": None,
-                    "text": "",
-                    "status": "Could not read"
-                }
-            )
-
-    # -----------------------------------------------------
-    # CALCULATE YEAR TOTALS
-    # -----------------------------------------------------
-
-    total_aia = sum(
-        record["aia"] or 0
-        for record in certificate_records
-    )
-
-    total_hsw = sum(
-        record["hsw"] or 0
-        for record in certificate_records
-    )
-
-    needs_review = sum(
-        1
-        for record in certificate_records
-        if record["status"] != "Read"
-    )
-
-    # -----------------------------------------------------
-    # YEAR HEADING
-    # -----------------------------------------------------
+    certificate_records = year_data["records"]
+    total_aia = year_data["total_aia"]
+    total_hsw = year_data["total_hsw"]
+    needs_review = year_data["needs_review"]
 
     expander_title = (
         f"{year} — "
@@ -902,10 +815,6 @@ for year_folder in year_folders:
             f" — {needs_review} needs review"
         )
 
-    # -----------------------------------------------------
-    # YEAR EXPANDER
-    # -----------------------------------------------------
-
     with st.expander(expander_title):
 
         if not certificate_records:
@@ -915,10 +824,6 @@ for year_folder in year_folders:
             )
 
         else:
-
-            # -------------------------------------------------
-            # COLUMN HEADINGS
-            # -------------------------------------------------
 
             name_col, aia_col, hsw_col = st.columns(
                 [6, 1, 1]
@@ -940,10 +845,6 @@ for year_folder in year_folders:
                 )
 
             st.divider()
-
-            # -------------------------------------------------
-            # CERTIFICATE ROWS
-            # -------------------------------------------------
 
             for index, record in enumerate(
                 certificate_records
@@ -1025,10 +926,6 @@ for year_folder in year_folders:
                         st.write(
                             f'{record["hsw"]:.1f}'
                         )
-
-            # -------------------------------------------------
-            # YEAR TOTAL
-            # -------------------------------------------------
 
             st.divider()
 
