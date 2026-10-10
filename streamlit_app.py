@@ -75,8 +75,10 @@ def extract_aia_credits(text):
     ]
 
     hsw_patterns = [
-        r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU\s*[/\-]?\s*HSW",
+        r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU(?:s)?\s*(?:[/|\-]|\(|\[)?\s*HSW\b",
         r"(\d+(?:\.\d+)?)\s*HSW\b",
+        r"\bHSW\b\s*(?:LU|Credit|Credits|Hour|Hours)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
+        r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU(?:s)?\s*\(?\s*Health\s*,?\s*Safety\s*(?:and|&)\s*Welfare",
     ]
 
     # Find AIA/LU credit
@@ -640,7 +642,7 @@ credentials = {
         "total_required": 18,
         "hsw_required": 12,
         "credit_type": "LU",
-        "rollover_credits": aia_rollover["rollover"],
+        "rollover_credits": aia_rollover["previous_rollover"],
         "previous_rollover": aia_rollover["previous_rollover"],
         "current_credits": aia_rollover["earned"],
         "rollover_period": "year",
@@ -656,7 +658,7 @@ credentials = {
         "total_required": 16,
         "hsw_required": "No separate minimum",
         "credit_type": "CE",
-        "rollover_credits": virginia_rollover["rollover"],
+        "rollover_credits": virginia_rollover["previous_rollover"],
         "previous_rollover": virginia_rollover["previous_rollover"],
         "current_credits": virginia_rollover["earned"],
         "rollover_period": "cycle",
@@ -672,7 +674,7 @@ credentials = {
         "total_required": 24,
         "hsw_required": 16,
         "credit_type": "PDH",
-        "rollover_credits": washington_rollover["rollover"],
+        "rollover_credits": washington_rollover["previous_rollover"],
         "previous_rollover": washington_rollover["previous_rollover"],
         "current_credits": washington_rollover["earned"],
         "rollover_period": "cycle",
@@ -711,15 +713,15 @@ def credential_card(name, data):
         st.divider()
 
         st.markdown("**Rollover Credits**")
-        st.write(
-            f'Current Balance: {data["rollover_credits"]:.1f}'
+
+        rollover_source = (
+            "Previous Year"
+            if data["cycle_length"] == "1-Year"
+            else "Previous Cycle"
         )
 
-        st.caption(
-            f'{data["previous_rollover"]:.1f} previous rollover '
-            f'+ {data["current_credits"]:.1f} current '
-            f'{data["rollover_period"]} credits '
-            f'− {data["total_required"]} required'
+        st.write(
+            f'{rollover_source}: {data["rollover_credits"]:.2f}'
         )
 
 
