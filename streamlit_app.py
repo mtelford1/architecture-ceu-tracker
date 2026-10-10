@@ -336,62 +336,6 @@ else:
     st.write(search_response.text)
 
 # ---------------------------------------------------------
-# BASIC STYLING
-# ---------------------------------------------------------
-
-# ---------------------------------------------------------
-# BASIC STYLING
-# ---------------------------------------------------------
-
-st.markdown(
-    """
-    <style>
-
-    .block-container {
-        max-width: 1400px;
-        padding-top: 2rem;
-    }
-
-    .credential-title {
-        font-size: 1.6rem;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
-    }
-
-    .credential-subtitle {
-        color: #777;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .section-heading {
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06rem;
-        color: #777;
-        margin-top: 1rem;
-        margin-bottom: 0.25rem;
-    }
-
-    .large-value {
-        font-size: 1.4rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-    }
-
-    .requirement-line {
-        font-size: 1rem;
-        margin-bottom: 0.25rem;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ---------------------------------------------------------
 # CREDENTIAL DATA
 #
 # For now these are manual values.
@@ -440,95 +384,31 @@ def credential_card(name, data):
 
     with st.container(border=True):
 
-        st.markdown(
-            f'<div class="credential-title">{name}</div>',
-            unsafe_allow_html=True
+        st.subheader(name)
+
+        st.caption(data["full_name"])
+
+        st.markdown("**Cycle**")
+        st.write(data["cycle_length"])
+
+        st.markdown("**Current Cycle**")
+        st.write(data["current_cycle"])
+
+        st.divider()
+
+        st.markdown("**Credit Requirements**")
+        st.write(
+            f'Total: {data["total_required"]} {data["credit_type"]}'
         )
-
-        st.markdown(
-            f'<div class="credential-subtitle">'
-            f'{data["full_name"]}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        # -------------------------
-        # CYCLE
-        # -------------------------
-
-        st.markdown(
-            '<div class="section-heading">Cycle</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            f'<div class="large-value">'
-            f'{data["cycle_length"]}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        # -------------------------
-        # CURRENT CYCLE
-        # -------------------------
-
-        st.markdown(
-            '<div class="section-heading">Current Cycle</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            f'<div class="large-value">'
-            f'{data["current_cycle"]}'
-            f'</div>',
-            unsafe_allow_html=True
+        st.write(
+            f'HSW: {data["hsw_required"]}'
         )
 
         st.divider()
 
-        # -------------------------
-        # CREDIT REQUIREMENTS
-        # -------------------------
-
-        st.markdown(
-            '<div class="section-heading">'
-            'Credit Requirements'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            f'<div class="requirement-line">'
-            f'<strong>Total:</strong> '
-            f'{data["total_required"]} {data["credit_type"]}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            f'<div class="requirement-line">'
-            f'<strong>HSW:</strong> '
-            f'{data["hsw_required"]}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        st.divider()
-
-        # -------------------------
-        # ROLLOVER
-        # -------------------------
-
-        st.markdown(
-            '<div class="section-heading">'
-            'Rollover Credits'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        st.metric(
-            label="From Previous Cycle",
-            value=f'{data["rollover_credits"]:g}'
+        st.markdown("**Rollover Credits**")
+        st.write(
+            f'From Previous Cycle: {data["rollover_credits"]:g}'
         )
 
 
