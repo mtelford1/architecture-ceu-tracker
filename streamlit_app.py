@@ -614,9 +614,7 @@ aia_rollover = calculate_annual_rollover(
     current_year
 )
 
-virginia_rollover = calculate_biennial_rollover(
-    year_credit_totals,
-    16,
+virginia_cycle_start, virginia_cycle_end = get_biennial_cycle(
     2015,
     current_year
 )
@@ -646,22 +644,21 @@ credentials = {
         "previous_rollover": aia_rollover["previous_rollover"],
         "current_credits": aia_rollover["earned"],
         "rollover_period": "year",
+        "rollover_allowed": True,
     },
 
     "Virginia": {
         "full_name": "Virginia Architect License",
         "cycle_length": "2-Year",
         "current_cycle": (
-            f'{virginia_rollover["cycle_start"]}'
-            f'–{virginia_rollover["cycle_end"]}'
+            f'{virginia_cycle_start}'
+            f'–{virginia_cycle_end}'
         ),
         "total_required": 16,
         "hsw_required": "No separate minimum",
         "credit_type": "CE",
-        "rollover_credits": virginia_rollover["previous_rollover"],
-        "previous_rollover": virginia_rollover["previous_rollover"],
-        "current_credits": virginia_rollover["earned"],
-        "rollover_period": "cycle",
+        "rollover_credits": 0.0,
+        "rollover_allowed": False,
     },
 
     "Washington": {
@@ -678,6 +675,7 @@ credentials = {
         "previous_rollover": washington_rollover["previous_rollover"],
         "current_credits": washington_rollover["earned"],
         "rollover_period": "cycle",
+        "rollover_allowed": True,
     },
 }
 
@@ -714,15 +712,21 @@ def credential_card(name, data):
 
         st.markdown("**Rollover Credits**")
 
-        rollover_source = (
-            "Previous Year"
-            if data["cycle_length"] == "1-Year"
-            else "Previous Cycle"
-        )
+        if data.get("rollover_allowed", True):
 
-        st.write(
-            f'{rollover_source}: {data["rollover_credits"]:.2f}'
-        )
+            rollover_source = (
+                "Previous Year"
+                if data["cycle_length"] == "1-Year"
+                else "Previous Cycle"
+            )
+
+            st.write(
+                f'{rollover_source}: {data["rollover_credits"]:.2f}'
+            )
+
+        else:
+
+            st.write("Not permitted")
 
 
 # ---------------------------------------------------------
