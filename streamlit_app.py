@@ -338,6 +338,18 @@ else:
     st.write(search_response.text)
 
 # ---------------------------------------------------------
+# VERIFIED ARCHIVED YEAR TOTALS
+# ---------------------------------------------------------
+
+ARCHIVED_YEAR_TOTALS = {
+    2018: {"total_aia": 19.0, "total_hsw": 19.0},
+    2019: {"total_aia": 19.5, "total_hsw": 19.5},
+    2020: {"total_aia": 16.5, "total_hsw": 15.5},
+    2021: {"total_aia": 17.25, "total_hsw": 10.0},
+}
+
+
+# ---------------------------------------------------------
 # CERTIFICATE DATA LOAD
 # ---------------------------------------------------------
 
@@ -347,6 +359,21 @@ for year_folder in year_folders:
 
     year = year_folder["year"]
     folder_id = year_folder["id"]
+
+    if year in ARCHIVED_YEAR_TOTALS:
+
+        archived = ARCHIVED_YEAR_TOTALS[year]
+
+        certificate_data_by_year[year] = {
+            "records": [],
+            "total_aia": archived["total_aia"],
+            "total_hsw": archived["total_hsw"],
+            "needs_review": 0,
+            "folder_error": False,
+            "archived": True,
+        }
+
+        continue
 
     files_url = (
         "https://graph.microsoft.com/v1.0/"
@@ -466,6 +493,7 @@ for year_folder in year_folders:
         "total_hsw": total_hsw,
         "needs_review": needs_review,
         "folder_error": False,
+        "archived": False,
     }
 
 
@@ -491,38 +519,33 @@ def calculate_annual_rollover(
     current_year
 ):
 
-    rollover = 0.0
+    current_earned = year_totals.get(
+        current_year,
+        0.0
+    )
 
-    current_previous = 0.0
-    current_earned = 0.0
+    previous_year_earned = year_totals.get(
+        current_year - 1,
+        0.0
+    )
 
-    for year in range(
-        start_year,
-        current_year + 1
-    ):
+    previous_rollover = max(
+        0.0,
+        previous_year_earned
+        - required_credits
+    )
 
-        previous_rollover = rollover
-        earned = year_totals.get(
-            year,
-            0.0
-        )
-
-        rollover = max(
-            0.0,
-            previous_rollover
-            + earned
-            - required_credits
-        )
-
-        if year == current_year:
-            current_previous = previous_rollover
-            current_earned = earned
+    projected_rollover = max(
+        0.0,
+        current_earned
+        - required_credits
+    )
 
     return {
-        "previous_rollover": current_previous,
+        "previous_rollover": previous_rollover,
         "earned": current_earned,
         "required": required_credits,
-        "rollover": rollover,
+        "rollover": projected_rollover,
     }
 
 
@@ -852,6 +875,7 @@ for year_folder in year_folders:
     total_aia = year_data["total_aia"]
     total_hsw = year_data["total_hsw"]
     needs_review = year_data["needs_review"]
+    is_archived = year_data.get("archived", False)
 
     expander_title = (
         f"{year} — "
@@ -867,7 +891,13 @@ for year_folder in year_folders:
 
     with st.expander(expander_title):
 
-        if not certificate_records:
+        if is_archived:
+
+            st.caption(
+                "Archived — verified year totals."
+            )
+
+        elif not certificate_records:
 
             st.caption(
                 "No PDF certificates found."
