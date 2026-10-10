@@ -626,6 +626,33 @@ washington_rollover = calculate_biennial_rollover(
     current_year
 )
 
+aia_current_credits = year_credit_totals.get(
+    current_year,
+    0.0
+)
+
+virginia_current_credits = (
+    year_credit_totals.get(
+        virginia_cycle_start,
+        0.0
+    )
+    + year_credit_totals.get(
+        virginia_cycle_end,
+        0.0
+    )
+)
+
+washington_current_credits = (
+    year_credit_totals.get(
+        washington_rollover["cycle_start"],
+        0.0
+    )
+    + year_credit_totals.get(
+        washington_rollover["cycle_end"],
+        0.0
+    )
+)
+
 
 # ---------------------------------------------------------
 # CREDENTIAL DATA
@@ -640,6 +667,7 @@ credentials = {
         "total_required": 18,
         "hsw_required": 12,
         "credit_type": "LU",
+        "current_credits": aia_current_credits,
         "rollover_credits": aia_rollover["previous_rollover"],
         "previous_rollover": aia_rollover["previous_rollover"],
         "current_credits": aia_rollover["earned"],
@@ -657,6 +685,7 @@ credentials = {
         "total_required": 16,
         "hsw_required": "No separate minimum",
         "credit_type": "CE",
+        "current_credits": virginia_current_credits,
         "rollover_credits": 0.0,
         "rollover_allowed": False,
     },
@@ -671,6 +700,7 @@ credentials = {
         "total_required": 24,
         "hsw_required": 16,
         "credit_type": "PDH",
+        "current_credits": washington_current_credits,
         "rollover_credits": washington_rollover["previous_rollover"],
         "previous_rollover": washington_rollover["previous_rollover"],
         "current_credits": washington_rollover["earned"],
@@ -697,6 +727,20 @@ def credential_card(name, data):
 
         st.markdown("**Current Cycle**")
         st.write(data["current_cycle"])
+
+        st.markdown("**Current Credits to Date**")
+
+        current_credit_text = (
+            f'{data["current_credits"]:.2f}'
+        )
+
+        if (
+            data["current_credits"]
+            >= data["total_required"]
+        ):
+            current_credit_text += " — COMPLETE"
+
+        st.write(current_credit_text)
 
         st.divider()
 
