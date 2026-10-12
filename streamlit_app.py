@@ -57,75 +57,94 @@ def extract_aia_credits(text):
         r"\s+",
         " ",
         text
-    )
+    ).strip()
 
     aia_credit = None
     hsw_credit = 0.0
 
-    # Look for values such as:
-    # 1.0 AIA LU
-    # 1 AIA LU
-    # 1.0 LU
-    # 1 LU/HSW
-    # 1.0 HSW
-
     aia_patterns = [
-        r"(\d+(?:\.\d+)?)\s*AIA\s*LU",
-        r"(\d+(?:\.\d+)?)\s*LU\b",
+        r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU(?:s)?\b",
+        r"\bAIA\s*LU(?:s)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
+        r"\bLearning\s+Units?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
     ]
+
+    for pattern in aia_patterns:
+
+        matches = re.findall(
+            pattern,
+            clean_text,
+            re.IGNORECASE
+        )
+
+        for match in matches:
+
+            try:
+                value = float(match)
+
+                if 0 < value <= 20:
+                    aia_credit = value
+                    break
+
+            except ValueError:
+                pass
+
+        if aia_credit is not None:
+            break
 
     hsw_patterns = [
         r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU(?:s)?\s*(?:[/|\-]|\(|\[)?\s*HSW\b",
         r"(\d+(?:\.\d+)?)\s*HSW\b",
-        r"\bHSW\b\s*(?:LU|Credit|Credits|Hour|Hours)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
+        r"\bHSW\b\s*(?:LU|LUs|Credit|Credits|Hour|Hours)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
         r"(\d+(?:\.\d+)?)\s*(?:AIA\s*)?LU(?:s)?\s*\(?\s*Health\s*,?\s*Safety\s*(?:and|&)\s*Welfare",
     ]
 
-    # Find AIA/LU credit
-    for pattern in aia_patterns:
-
-        match = re.search(
-            pattern,
-            clean_text,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            value = float(
-                match.group(1)
-            )
-
-            if 0 < value <= 20:
-                aia_credit = value
-                break
-
-    # Find HSW credit
     for pattern in hsw_patterns:
 
-        match = re.search(
+        matches = re.findall(
             pattern,
             clean_text,
             re.IGNORECASE
         )
 
-        if match:
+        for match in matches:
 
-            value = float(
-                match.group(1)
-            )
+            try:
+                value = float(match)
 
-            if 0 < value <= 20:
-                hsw_credit = value
-                break
+                if 0 < value <= 20:
+                    hsw_credit = value
+                    break
 
-    # If certificate says something like
-    # "1.0 LU/HSW", that credit counts as
-    # both AIA LU and HSW.
-    if aia_credit is None and hsw_credit > 0:
+            except ValueError:
+                pass
+
+        if hsw_credit > 0:
+            break
+
+    # Some AIA certificates give the LU value in one place and
+    # identify the course as HSW elsewhere. In that case the full
+    # LU value counts as HSW.
+    hsw_designation = re.search(
+        r"\bHSW\b|Health\s*,?\s*Safety\s*(?:and|&)\s*Welfare",
+        clean_text,
+        re.IGNORECASE
+    )
+
+    if (
+        aia_credit is not None
+        and hsw_credit == 0.0
+        and hsw_designation
+    ):
+        hsw_credit = aia_credit
+
+    if (
+        aia_credit is None
+        and hsw_credit > 0
+    ):
         aia_credit = hsw_credit
 
     return aia_credit, hsw_credit
+
 
 # ---------------------------------------------------------
 # PAGE SETUP
@@ -509,6 +528,11 @@ year_credit_totals = {
     for year, data in certificate_data_by_year.items()
 }
 
+year_hsw_totals = {
+    year: data["total_hsw"]
+    for year, data in certificate_data_by_year.items()
+}
+
 
 # ---------------------------------------------------------
 # ROLLOVER CALCULATIONS
@@ -683,6 +707,22 @@ washington_current_credits = (
     )
 )
 
+aia_current_hsw = year_hsw_totals.get(
+    current_year,
+    0.0
+)
+
+washington_current_hsw = (
+    year_hsw_totals.get(
+        washington_rollover["cycle_start"],
+        0.0
+    )
+    + year_hsw_totals.get(
+        washington_rollover["cycle_end"],
+        0.0
+    )
+)
+
 
 # ---------------------------------------------------------
 # CREDENTIAL DATA
@@ -698,9 +738,9 @@ credentials = {
         "hsw_required": 12,
         "credit_type": "LU",
         "current_credits": aia_current_credits,
+        "current_hsw": aia_current_hsw,
         "rollover_credits": aia_rollover["previous_rollover"],
         "previous_rollover": aia_rollover["previous_rollover"],
-        "current_credits": aia_rollover["earned"],
         "rollover_period": "year",
         "rollover_allowed": True,
     },
@@ -716,6 +756,7 @@ credentials = {
         "hsw_required": "No separate minimum",
         "credit_type": "CE",
         "current_credits": virginia_current_credits,
+        "current_hsw": None,
         "rollover_credits": 0.0,
         "rollover_allowed": False,
     },
@@ -731,9 +772,9 @@ credentials = {
         "hsw_required": 16,
         "credit_type": "PDH",
         "current_credits": washington_current_credits,
+        "current_hsw": washington_current_hsw,
         "rollover_credits": washington_rollover["previous_rollover"],
         "previous_rollover": washington_rollover["previous_rollover"],
-        "current_credits": washington_rollover["earned"],
         "rollover_period": "cycle",
         "rollover_allowed": True,
     },
@@ -760,17 +801,51 @@ def credential_card(name, data):
 
         st.markdown("**Current Credits to Date**")
 
-        current_credit_text = (
-            f'{data["current_credits"]:.2f}'
-        )
+        current_hsw = data.get("current_hsw")
+        hsw_required = data["hsw_required"]
 
-        if (
+        total_complete = (
             data["current_credits"]
             >= data["total_required"]
-        ):
-            current_credit_text += " — COMPLETE"
+        )
 
-        st.write(current_credit_text)
+        hsw_complete = (
+            current_hsw is None
+            or not isinstance(
+                hsw_required,
+                (int, float)
+            )
+            or current_hsw >= hsw_required
+        )
+
+        is_complete = (
+            total_complete
+            and hsw_complete
+        )
+
+        total_text = (
+            f'Total: {data["current_credits"]:.2f}'
+        )
+
+        if current_hsw is not None:
+
+            st.write(total_text)
+
+            hsw_text = (
+                f'HSW: {current_hsw:.2f}'
+            )
+
+            if is_complete:
+                hsw_text += " — COMPLETE"
+
+            st.write(hsw_text)
+
+        else:
+
+            if is_complete:
+                total_text += " — COMPLETE"
+
+            st.write(total_text)
 
         st.divider()
 
