@@ -596,6 +596,77 @@ def get_biennial_cycle(
     )
 
 
+def calculate_washington_rollover(
+    year_totals,
+    anchor_year,
+    current_year
+):
+
+    cycle_start, cycle_end = get_biennial_cycle(
+        anchor_year,
+        current_year
+    )
+
+    # No prior Washington cycle exists before the
+    # initial license cycle.
+    previous_rollover = 0.0
+
+    if cycle_start > anchor_year:
+
+        previous_cycle_start = cycle_start - 2
+        previous_cycle_end = cycle_start - 1
+
+        first_year_credits = year_totals.get(
+            previous_cycle_start,
+            0.0
+        )
+
+        second_year_credits = year_totals.get(
+            previous_cycle_end,
+            0.0
+        )
+
+        # Washington allows up to 12 excess PDH earned
+        # in the second year of the previous 2-year cycle
+        # to carry into the next cycle.
+        credits_needed_in_second_year = max(
+            0.0,
+            24.0 - first_year_credits
+        )
+
+        eligible_second_year_excess = max(
+            0.0,
+            second_year_credits
+            - credits_needed_in_second_year
+        )
+
+        previous_rollover = min(
+            12.0,
+            eligible_second_year_excess
+        )
+
+    earned = (
+        year_totals.get(
+            cycle_start,
+            0.0
+        )
+        + year_totals.get(
+            cycle_end,
+            0.0
+        )
+    )
+
+    return {
+        "cycle_start": cycle_start,
+        "cycle_end": cycle_end,
+        "previous_rollover": previous_rollover,
+        "earned": earned,
+        "required": 24,
+    }
+
+
+
+
 def calculate_biennial_rollover(
     year_totals,
     required_credits,
@@ -673,9 +744,8 @@ virginia_cycle_start, virginia_cycle_end = get_biennial_cycle(
     current_year
 )
 
-washington_rollover = calculate_biennial_rollover(
+washington_rollover = calculate_washington_rollover(
     year_credit_totals,
-    24,
     2025,
     current_year
 )
@@ -804,8 +874,16 @@ def credential_card(name, data):
         current_hsw = data.get("current_hsw")
         hsw_required = data["hsw_required"]
 
-        total_complete = (
+        credits_toward_requirement = (
             data["current_credits"]
+            + data.get(
+                "rollover_credits",
+                0.0
+            )
+        )
+
+        total_complete = (
+            credits_toward_requirement
             >= data["total_required"]
         )
 
@@ -846,6 +924,7 @@ def credential_card(name, data):
                 total_text += " — COMPLETE"
 
             st.write(total_text)
+            st.write("HSW: N/A")
 
         st.divider()
 
