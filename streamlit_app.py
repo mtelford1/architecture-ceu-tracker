@@ -342,10 +342,17 @@ else:
 # ---------------------------------------------------------
 
 ARCHIVED_YEAR_TOTALS = {
+    2015: {"total_aia": 11.0, "total_hsw": 8.0},
+    2016: {"total_aia": 10.5, "total_hsw": 7.5},
+    2017: {"total_aia": 4.25, "total_hsw": 4.25},
     2018: {"total_aia": 19.0, "total_hsw": 19.0},
     2019: {"total_aia": 19.5, "total_hsw": 19.5},
     2020: {"total_aia": 16.5, "total_hsw": 15.5},
     2021: {"total_aia": 17.25, "total_hsw": 10.0},
+    2022: {"total_aia": 18.0, "total_hsw": 14.0},
+    2023: {"total_aia": 19.0, "total_hsw": 12.75},
+    2024: {"total_aia": 18.0, "total_hsw": 14.0},
+    2025: {"total_aia": 18.75, "total_hsw": 14.75},
 }
 
 
